@@ -29,6 +29,8 @@ void cproxy_process_upstream_binary(conn *c) {
         return;
     }
 
+    moxi_log_write("SRIRAM DEBUG: inside cproxy_process_upstream_binary\n");
+
     c->cmd_curr       = -1;
     c->cmd_start      = NULL;
     c->cmd_start_time = msec_current_time;
@@ -40,12 +42,13 @@ void cproxy_process_upstream_binary(conn *c) {
 
     assert(bodylen >= (uint32_t) keylen + extlen);
 
-    if (settings.verbose > 2) {
-        moxi_log_write("<%d cproxy_process_upstream_binary %x %d %d %u\n",
-                c->sfd, c->cmd, extlen, keylen, bodylen);
-    }
+    moxi_log_write("SRIRAM DEBUG: <%d cproxy_process_upstream_binary %x %d %d %u\n",
+                   c->sfd, c->cmd, extlen, keylen, bodylen);
 
     process_bin_noreply(c); /* Map quiet c->cmd values into non-quiet. */
+
+    moxi_log_write("SRIRAM DEBUG: inside cproxy_process_upstream_binary:"
+                   "after process_bin_noreply\n");
 
     if (c->cmd == PROTOCOL_BINARY_CMD_VERSION ||
         c->cmd == PROTOCOL_BINARY_CMD_QUIT) {
@@ -112,10 +115,8 @@ void cproxy_process_upstream_binary_nread(conn *c) {
     int      keylen  = header->request.keylen;
     uint32_t bodylen = header->request.bodylen;
 
-    if (settings.verbose > 2) {
-        moxi_log_write("<%d cproxy_process_upstream_binary_nread %x %d %d %u\n",
-                c->sfd, c->cmd, extlen, keylen, bodylen);
-    }
+    moxi_log_write("SRIRAM DEBUG: <%d cproxy_process_upstream_binary_nread %x %d %d %u\n",
+                   c->sfd, c->cmd, extlen, keylen, bodylen);
 
     /* pthread_mutex_lock(&c->thread->stats.mutex); */
     /* c->thread->stats.slab_stats[it->slabs_clsid].set_cmds++; */

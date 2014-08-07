@@ -476,26 +476,19 @@ SOCKET mcs_connect(const char *hostname, int portnum,
 
     snprintf(port, sizeof(port), "%d", portnum);
 
+    moxi_log_write("SRIRAM DEBUG: inside mcs_connect\n");
     error = getaddrinfo(hostname, port, &hints, &ai);
+
     if (error != 0) {
-#if 0
-        if (error != EAI_SYSTEM) {
-            /* settings.extensions.logger->log(EXTENSION_LOG_WARNING, NULL, */
-            /*                                 "getaddrinfo(): %s\n", gai_strerror(error)); */
-        } else {
-            /* settings.extensions.logger->log(EXTENSION_LOG_WARNING, NULL, */
-            /*                                 "getaddrinfo(): %s\n", strerror(error)); */
-        }
-#endif
+        moxi_log_write("SRIRAM DEBUG: getaddrinfo(): %s\n", strerror(error));
         return INVALID_SOCKET;
     }
 
     for (next = ai; next; next = next->ai_next) {
         SOCKET sock = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (sock == INVALID_SOCKET) {
-            /* settings.extensions.logger->log(EXTENSION_LOG_WARNING, NULL, */
-            /*                                 "Failed to create socket: %s\n", */
-            /*                                 strerror(errno)); */
+            moxi_log_write("Failed to create socket: %s\n",
+                           strerror(errno));
             continue;
         }
 
@@ -523,9 +516,7 @@ SOCKET mcs_connect(const char *hostname, int portnum,
                 break;
             }
 
-            /* settings.extensions.logger->log(EXTENSION_LOG_WARNING, NULL, */
-            /*                                 "Failed to connect socket: %s\n", */
-            /*                                 strerror(errno)); */
+            moxi_log_write("Failed to connect socket: %s\n", strerror(errno));
             closesocket(sock);
             continue;
         }
@@ -617,9 +608,24 @@ mcs_return mcs_set_sock_opt(SOCKET sock) {
 }
 
 ssize_t mcs_io_write(SOCKET fd, const void *buffer, size_t length) {
+    int err = 0;
     assert(fd != -1);
 
-    return send(fd, buffer, (int)length, 0);
+    err = send(fd, buffer, (int)length, 0);
+
+#ifdef WIN32
+    if (err == -1)
+    {
+        char buf[2048];
+        int last_error = WSAGetLastError();
+        memset(buf, 0, sizeof(buf));
+        memcpy(buf, buffer, length); 
+        moxi_log_write("SRIRAM DEBUG: mcs_io_write: Failed to send: buf: %s"
+                       " with error code: %d\n", buf, last_error);
+    }
+#endif
+
+    return err;
 }
 
 #ifdef WIN32

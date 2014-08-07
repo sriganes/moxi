@@ -44,10 +44,9 @@ bool cproxy_forward_b2b_downstream(downstream *d) {
     d->downstream_used_start = 0;
 
     uc = d->upstream_conn;
-    if (settings.verbose > 2) {
-        moxi_log_write("%d: cproxy_forward_b2b_downstream %x\n",
-                uc->sfd, uc->cmd);
-    }
+
+    moxi_log_write("SRIRAM DEBUG: %d: cproxy_forward_b2b_downstream %x\n",
+                   uc->sfd, uc->cmd);
 
     assert(uc != NULL);
     assert(uc->state == conn_pause);
@@ -127,8 +126,8 @@ bool cproxy_forward_b2b_downstream(downstream *d) {
         return cproxy_forward_b2b_simple_downstream(d, uc);
     }
 
-    if (settings.verbose > 2) {
-        moxi_log_write("%d: cproxy_forward_b2b_downstream connect failed\n",
+    if (1) {
+        moxi_log_write("SRIRAM DEBUG: %d: cproxy_forward_b2b_downstream connect failed\n",
                 uc->sfd);
     }
 
@@ -358,10 +357,8 @@ void cproxy_process_b2b_downstream(conn *c) {
     keylen  = c->binary_header.request.keylen;
     bodylen = c->binary_header.request.bodylen;
 
-    if (settings.verbose > 2) {
-        moxi_log_write("<%d cproxy_process_b2b_downstream %x %d %d %u\n",
-                c->sfd, c->cmd, extlen, keylen, bodylen);
-    }
+    moxi_log_write("SRIRAM DEBUG: <%d cproxy_process_b2b_downstream %x %d %d %u\n",
+                   c->sfd, c->cmd, extlen, keylen, bodylen);
 
     assert(bodylen >= (uint32_t) keylen + extlen);
 
@@ -433,10 +430,8 @@ void cproxy_process_b2b_downstream_nread(conn *c) {
     status = ntohs(header->response.status);
     opcode = header->response.opcode;
 
-    if (settings.verbose > 2) {
-        moxi_log_write("<%d cproxy_process_b2b_downstream_nread %x %x %d %d %u %d %x\n",
-                c->sfd, c->cmd, opcode, extlen, keylen, bodylen, c->noreply, status);
-    }
+    moxi_log_write("SRIRAM DEBUG: <%d cproxy_process_b2b_downstream_nread %x %x %d %d %u %d %x\n",
+                   c->sfd, c->cmd, opcode, extlen, keylen, bodylen, c->noreply, status);
 
     d = c->extra;
     assert(d != NULL);
@@ -502,11 +497,9 @@ void cproxy_process_b2b_downstream_nread(conn *c) {
             int vbucket;
             int sindex;
 
-            if (settings.verbose > 2) {
-                moxi_log_write("<%d cproxy_process_b2b_downstream_nread not-my-vbucket, "
-                        "cmd: %x %d\n",
-                        c->sfd, header->response.opcode, uc->item != NULL);
-            }
+            moxi_log_write("SRIRAM DEBUG: <%d cproxy_process_b2b_downstream_nread not-my-vbucket, "
+                           "cmd: %x %d\n",
+                           c->sfd, header->response.opcode, uc->item != NULL);
 
             assert(uc->item != NULL);
 
@@ -515,12 +508,10 @@ void cproxy_process_b2b_downstream_nread(conn *c) {
             vbucket = ntohs(req->request.reserved);
             sindex = downstream_conn_index(d, c);
 
-            if (settings.verbose > 2) {
-                moxi_log_write("<%d cproxy_process_b2b_downstream_nread not-my-vbucket, "
-                        "cmd: %x not multi-key get, sindex %d, vbucket %d, retries %d\n",
-                        c->sfd, header->response.opcode,
-                        sindex, vbucket, uc->cmd_retries);
-            }
+            moxi_log_write("SRIRAM DEBUG: <%d cproxy_process_b2b_downstream_nread not-my-vbucket, "
+                           "cmd: %x not multi-key get, sindex %d, vbucket %d, retries %d\n",
+                           c->sfd, header->response.opcode,
+                           sindex, vbucket, uc->cmd_retries);
 
             mcs_server_invalid_vbucket(&d->mst, sindex, vbucket);
 
@@ -538,24 +529,20 @@ void cproxy_process_b2b_downstream_nread(conn *c) {
                 goto done;
             }
 
-            if (settings.verbose > 2) {
-                moxi_log_write("%d: cproxy_process_b2b_downstream_nread not-my-vbucket, "
-                        "cmd: %x skipping retry %d >= %d\n",
-                        c->sfd, header->response.opcode, uc->cmd_retries,
-                        max_retries);
-            }
+            moxi_log_write("SRIRAM DEBUG: %d: cproxy_process_b2b_downstream_nread not-my-vbucket, "
+                           "cmd: %x skipping retry %d >= %d\n",
+                           c->sfd, header->response.opcode, uc->cmd_retries,
+                           max_retries);
         }
     }
 
     /* Write the response to the upstream connection. */
 
     if (uc != NULL) {
-        if (settings.verbose > 2) {
-            moxi_log_write("<%d cproxy_process_b2b_downstream_nread got %u\n",
-                           c->sfd, it->nbytes);
+        moxi_log_write("SRIRAM DEBUG: <%d cproxy_process_b2b_downstream_nread got %u\n",
+                       c->sfd, it->nbytes);
 
-            cproxy_dump_header(c->sfd, ITEM_data(it));
-        }
+        cproxy_dump_header(c->sfd, ITEM_data(it));
 
         if (add_conn_item(uc, it) == true) {
             it->refcount++;

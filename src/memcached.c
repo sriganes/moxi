@@ -412,7 +412,7 @@ conn *conn_new(const SOCKET sfd, enum conn_states init_state,
         c->request_addr_size = 0;
     }
 
-    if (settings.verbose > 1) {
+    if (1) {
         if (init_state == conn_listening) {
             moxi_log_write("<%d server listening (%s)\n", sfd,
                 prot_text(c->protocol));
@@ -456,8 +456,8 @@ conn *conn_new(const SOCKET sfd, enum conn_states init_state,
     c->funcs = funcs;
     if (c->funcs == NULL) {
         c->funcs = &conn_funcs_default;
-        if (settings.verbose > 1)
-            moxi_log_write( "<%d initialized conn_funcs to default\n", sfd);
+        if (1)
+            moxi_log_write( "SRIRAM DEBUG: <%d initialized conn_funcs to default\n", sfd);
     }
 
     c->cmd_curr = -1;
@@ -1202,6 +1202,8 @@ static void complete_update_bin(conn *c) {
     c->thread->stats.slab_stats[it->slabs_clsid].set_cmds++;
     cb_mutex_exit(&c->thread->stats.mutex);
 
+    moxi_log_write("SRIRAM DEBUG: complete_update_bin: %d\n", it->nkey);
+
     /* We don't actually receive the trailing two characters in the bin
      * protocol, so we're going to just set them here */
     *(ITEM_data(it) + it->nbytes - 2) = '\r';
@@ -1209,7 +1211,6 @@ static void complete_update_bin(conn *c) {
 
     ret = store_item(it, c->cmd, c);
 
-#ifdef ENABLE_DTRACE
     uint64_t cas = ITEM_get_cas(it);
     switch (c->cmd) {
     case NREAD_ADD:
@@ -1233,7 +1234,6 @@ static void complete_update_bin(conn *c) {
                               (ret == STORED) ? it->nbytes : -1, cas);
         break;
     }
-#endif
 
     switch (ret) {
     case STORED:
@@ -1671,6 +1671,7 @@ void dispatch_bin_command(conn *c) {
         case PROTOCOL_BINARY_CMD_SET: /* FALLTHROUGH */
         case PROTOCOL_BINARY_CMD_ADD: /* FALLTHROUGH */
         case PROTOCOL_BINARY_CMD_REPLACE:
+            moxi_log_write("SRIRAM DEBUG: got a set command\n");
             if (extlen == 8 && keylen != 0 && bodylen >= (keylen + 8)) {
                 bin_read_key(c, bin_reading_set_header, 8);
             } else {
@@ -1762,21 +1763,21 @@ static void process_bin_update(conn *c) {
 
     vlen = c->binary_header.request.bodylen - (nkey + c->binary_header.request.extlen);
 
-    if (settings.verbose) {
+    if (1) {
         int ii;
         if (c->cmd == PROTOCOL_BINARY_CMD_ADD) {
             moxi_log_write("<%d ADD ", c->sfd);
         } else if (c->cmd == PROTOCOL_BINARY_CMD_SET) {
-            moxi_log_write("<%d SET ", c->sfd);
+            moxi_log_write("SRIRAM DEBUG <%d SET ", c->sfd);
         } else {
             moxi_log_write("<%d REPLACE ", c->sfd);
         }
         for (ii = 0; ii < nkey; ++ii) {
-            moxi_log_write("%c", key[ii]);
+            moxi_log_write("SRIRAM DEBUG %c", key[ii]);
         }
 
-        if (settings.verbose > 1) {
-            moxi_log_write(" Value len is %d", vlen);
+        if (1) {
+            moxi_log_write("SRIRAM DEBUG Value len is %d", vlen);
         }
         moxi_log_write("\n");
     }
@@ -2001,6 +2002,8 @@ void reset_cmd_handler(conn *c) {
 void complete_nread(conn *c) {
     assert(c != NULL);
     assert(c->funcs != NULL);
+
+    moxi_log_write("SRIRAM DEBUG: inside complete_nread\n");
 
     if (IS_ASCII(c->protocol)) {
         c->funcs->conn_complete_nread_ascii(c);
@@ -3156,11 +3159,9 @@ int try_read_command(conn *c) {
             protocol_binary_request_header* req;
             req = (protocol_binary_request_header*)c->rcurr;
 
-            if (settings.verbose > 1) {
-                /* Dump the packet before we convert it to host order */
-                moxi_log_write("<%d Read binary protocol data:\n", c->sfd);
-                cproxy_dump_header(c->sfd, (char *) req->bytes);
-            }
+            /* Dump the packet before we convert it to host order */
+            moxi_log_write("SRIRAM DEBUG: <%d Read binary protocol data:\n", c->sfd);
+            cproxy_dump_header(c->sfd, (char *) req->bytes);
 
             c->binary_header = *req;
             c->binary_header.request.keylen = ntohs(req->request.keylen);
@@ -3168,10 +3169,8 @@ int try_read_command(conn *c) {
             c->binary_header.request.cas = mc_swap64(req->request.cas);
 
             if (c->binary_header.request.magic != c->funcs->conn_binary_command_magic) {
-                if (settings.verbose) {
-                    moxi_log_write("Invalid magic:  %x\n",
-                            c->binary_header.request.magic);
-                }
+                moxi_log_write("Invalid magic:  %x\n",
+                               c->binary_header.request.magic);
                 conn_set_state(c, conn_closing);
                 return -1;
             }
@@ -3555,6 +3554,8 @@ void drive_machine(conn *c) {
             break;
 
         case conn_read:
+            moxi_log_write("SRIRAM DEBUG: inside drive_machine,"
+                           "calling try_read_network\n");
             res = IS_UDP(c->transport) ? try_read_udp(c) : try_read_network(c);
 
             switch (res) {
@@ -3665,7 +3666,7 @@ void drive_machine(conn *c) {
                 break;
             }
             /* otherwise we have a real error, on which we close the connection */
-            if (!is_closed_conn(error) && settings.verbose > 0) {
+            if (!is_closed_conn(error)) {
                 moxi_log_write("Failed to read, and not due to blocking:\n"
                         "errno: %d %s \n"
                         "rcurr=%lx ritem=%lx rbuf=%lx rlbytes=%d rsize=%d\n",

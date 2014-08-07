@@ -1451,11 +1451,8 @@ int cproxy_connect_downstream(downstream *d, LIBEVENT_THREAD *thread,
     assert(d->behaviors_num >= n);
     assert(d->behaviors_arr != NULL);
 
-    if (settings.verbose > 2) {
-        moxi_log_write("%d: cproxy_connect_downstream server_index %d in %d\n",
-                       d->upstream_conn->sfd, server_index, n);
-    }
-
+    moxi_log_write("SRIRAM DEBUG: %d: cproxy_connect_downstream server_index %d in %d\n",
+                   d->upstream_conn->sfd, server_index, n);
 
     if (server_index >= 0) {
         assert(server_index < n);
@@ -1490,6 +1487,9 @@ int cproxy_connect_downstream(downstream *d, LIBEVENT_THREAD *thread,
                 msst_actual->ident_a[0] = msst_actual->ident_b[0] = 0;
             }
 
+            moxi_log_write("SRIRAM DEBUG: cproxy_connect_downstream:"
+                           "Before zstored_acquire_downstream_conn\n");
+
             d->downstream_conns[i] =
                 zstored_acquire_downstream_conn(d, thread,
                                                 msst_actual,
@@ -1512,15 +1512,15 @@ int cproxy_connect_downstream(downstream *d, LIBEVENT_THREAD *thread,
             if (d->downstream_conns[i] != NULL &&
                 d->downstream_conns[i] != NULL_CONN &&
                 d->downstream_conns[i]->state == conn_connecting) {
+                moxi_log_write("SRIRAM DEBUG: cproxy_connect_downstream:"
+                               "conn_connecting\n");
                 return -1;
             }
 
             if (d->downstream_conns[i] == NULL &&
                 downstream_conn_max_reached == true) {
-                if (settings.verbose > 2) {
-                    moxi_log_write("%d: downstream_conn_max reached\n",
-                                   d->upstream_conn->sfd);
-                }
+                moxi_log_write("SRIRAM DEBUG: %d: downstream_conn_max reached\n",
+                               d->upstream_conn->sfd);
 
                 if (zstored_downstream_waiting_add(d, thread,
                                                    msst_actual,
@@ -1530,6 +1530,8 @@ int cproxy_connect_downstream(downstream *d, LIBEVENT_THREAD *thread,
 
                     cproxy_start_downstream_timeout_ex(d, c,
                         d->behaviors_arr[i].downstream_conn_queue_timeout);
+
+                    moxi_log_write("SRIRAM DEBUG: cproxy_connect_downstream: timeout\n");
 
                     return -1;
                 }
@@ -1554,7 +1556,7 @@ conn *cproxy_connect_downstream_conn(downstream *d,
                                      proxy_behavior *behavior) {
     uint64_t start = 0;
     int err = -1;
-    SOCKET fd;
+    SOCKET fd = -1;
 
     assert(d);
     assert(d->ptd);
@@ -1573,16 +1575,19 @@ conn *cproxy_connect_downstream_conn(downstream *d,
 
     d->ptd->stats.stats.tot_downstream_connect_started++;
 
+    moxi_log_write("SRIRAM DEBUG: %d: cproxy_connect_downstream_conn 1 %s:%d %d %d\n",
+                   fd, mcs_server_st_hostname(msst),
+                   mcs_server_st_port(msst),
+                   MOXI_BLOCKING_CONNECT, err);
+
     fd = mcs_connect(mcs_server_st_hostname(msst),
                      mcs_server_st_port(msst), &err,
                      MOXI_BLOCKING_CONNECT);
 
-    if (settings.verbose > 2) {
-        moxi_log_write("%d: cproxy_connect_downstream_conn %s:%d %d %d\n", fd,
-                       mcs_server_st_hostname(msst),
-                       mcs_server_st_port(msst),
-                       MOXI_BLOCKING_CONNECT, err);
-    }
+    moxi_log_write("SRIRAM DEBUG: %d: cproxy_connect_downstream_conn 2 %s:%d %d %d\n",
+                   fd, mcs_server_st_hostname(msst),
+                   mcs_server_st_port(msst),
+                   MOXI_BLOCKING_CONNECT, err);
 
     if (fd != -1) {
         conn *c = conn_new(fd, conn_pause, 0,
@@ -1591,11 +1596,20 @@ conn *cproxy_connect_downstream_conn(downstream *d,
                            thread->base,
                            &cproxy_downstream_funcs, d);
         if (c != NULL ) {
+            moxi_log_write("SRIRAM DEBUG: cproxy_connect_downstream_conn 3: "
+                           "Obtained conn_new successful\n");
             c->protocol = (d->upstream_conn->peer_protocol ?
                            d->upstream_conn->peer_protocol :
                            behavior->downstream_protocol);
             c->thread = thread;
             c->cmd_start_time = start;
+
+#ifdef WIN32
+            if (err == WSAEINPROGRESS)
+                err = EINPROGRESS;
+            else if (err == WSAEWOULDBLOCK)
+                err = EWOULDBLOCK;
+#endif
 
             if (err == EINPROGRESS ||
                 err == EWOULDBLOCK) {
@@ -1607,6 +1621,8 @@ conn *cproxy_connect_downstream_conn(downstream *d,
 
                     return c;
                 } else {
+                    moxi_log_write("SRIRAM DEBUG: cproxy_connect_downstream_conn 4: "
+                                   "Got oom error\n");
                     d->ptd->stats.stats.err_oom++;
                 }
             } else {
@@ -1618,6 +1634,8 @@ conn *cproxy_connect_downstream_conn(downstream *d,
             cproxy_close_conn(c);
         } else {
             d->ptd->stats.stats.err_oom++;
+            moxi_log_write("SRIRAM DEBUG: cproxy_connect_downstream_conn 5: "
+                           "Failed to create conn_new\n");
         }
     }
 
@@ -1661,6 +1679,8 @@ bool downstream_connect_init(downstream *d, mcs_server_st *msst,
             d->ptd->stats.stats.tot_downstream_bucket_failed++;
         }
     } else {
+        moxi_log_write("SRIRAM DEBUG: downstream_connect_init: "
+                       "authentication failure\n");
         d->ptd->stats.stats.tot_downstream_auth_failed++;
         if (rv == 1) {
             d->ptd->stats.stats.tot_auth_timeout++;
@@ -1751,10 +1771,8 @@ bool cproxy_prep_conn_for_write(conn *c) {
             return true;
         }
 
-        if (settings.verbose > 1) {
-            moxi_log_write("%d: cproxy_prep_conn_for_write failed\n",
-                           c->sfd);
-        }
+        moxi_log_write("SRIRAM DEBUG: %d: cproxy_prep_conn_for_write failed\n",
+                        c->sfd);
     }
 
     return false;
@@ -1799,9 +1817,7 @@ void cproxy_assign_downstream(proxy_td *ptd) {
 
     assert(ptd != NULL);
 
-    if (settings.verbose > 2) {
-        moxi_log_write("assign_downstream\n");
-    }
+    moxi_log_write("SRIRAM DEBUG: assign_downstream\n");
 
     ptd->downstream_assigns++;
 
@@ -1896,10 +1912,8 @@ void cproxy_assign_downstream(proxy_td *ptd) {
             ptd->stats.stats.tot_assign_upstream++;
         }
 
-        if (settings.verbose > 2) {
-            moxi_log_write("%d: assign_downstream, matched to upstream\n",
-                    d->upstream_conn->sfd);
-        }
+        moxi_log_write("SRIRAM DEBUG %d: assign_downstream, matched to upstream\n",
+                       d->upstream_conn->sfd);
 
         if (cproxy_forward(d) == false) {
             /* TODO: This stat is incorrect, as we might reach here */
@@ -1924,8 +1938,8 @@ void cproxy_assign_downstream(proxy_td *ptd) {
         }
     }
 
-    if (settings.verbose > 2) {
-        moxi_log_write("assign_downstream, done\n");
+    if (1) {
+        moxi_log_write("SRIRAM DEBUG: assign_downstream, done\n");
     }
 }
 
@@ -1950,8 +1964,8 @@ void propagate_error_msg(downstream *d, char *ascii_msg,
         conn *uc = d->upstream_conn;
         conn *curr;
 
-        if (settings.verbose > 1) {
-            moxi_log_write("%d: could not forward upstream to downstream\n",
+        if (1) {
+            moxi_log_write("SRIRAM DEBUG: %d: could not forward upstream to downstream\n",
                            uc->sfd);
         }
 
@@ -2253,10 +2267,8 @@ void cproxy_pause_upstream_for_downstream(proxy_td *ptd, conn *upstream) {
     assert(ptd != NULL);
     assert(upstream != NULL);
 
-    if (settings.verbose > 2) {
-        moxi_log_write("%d: pause_upstream_for_downstream\n",
-                upstream->sfd);
-    }
+    moxi_log_write("SRIRAM DEBUG %d: pause_upstream_for_downstream\n",
+                   upstream->sfd);
 
     conn_set_state(upstream, conn_pause);
 
@@ -2896,16 +2908,14 @@ int cproxy_auth_downstream(mcs_server_st *server,
         return 0;
     }
 
-    if (settings.verbose > 2) {
-        moxi_log_write("cproxy_auth_downstream usr: %s pwd: (%d)\n",
-                       usr, pwd_len);
-    }
+    moxi_log_write("SRIRAM DEBUG: cproxy_auth_downstream usr: %s pwd: (%d)\n",
+                   usr, pwd_len);
 
     if (usr_len <= 0 ||
         !IS_PROXY(behavior->downstream_protocol) ||
         (usr_len + pwd_len + 50 > (int) sizeof(buf))) {
-        if (settings.verbose > 1) {
-            moxi_log_write("auth failure args\n");
+        if (1) {
+            moxi_log_write("SRIRAM DEBUG: auth failure args\n");
         }
 
         return -1; /* Probably misconfigured. */
@@ -2929,17 +2939,19 @@ int cproxy_auth_downstream(mcs_server_st *server,
     req.request.keylen   = htons((uint16_t) 5); /* 5 == strlen("PLAIN"). */
     req.request.datatype = PROTOCOL_BINARY_RAW_BYTES;
     req.request.bodylen  = htonl(buf_len);
-
+ 
     if (mcs_io_write(fd, (const char *) req.bytes,
-                     sizeof(req.bytes)) != sizeof(req.bytes) ||
-        mcs_io_write(fd, buf, buf_len) == -1) {
+                     sizeof(req.bytes)) != sizeof(req.bytes)) {
         mcs_io_reset(fd);
+        moxi_log_write("SRIRAM DEBUG 1: auth failure during write for %s (%d)\n",
+                       (char *) req.bytes, sizeof(req.bytes));
+        return -1;
+    }
 
-        if (settings.verbose > 1) {
-            moxi_log_write("auth failure during write for %s (%d)\n",
-                           usr, buf_len);
-        }
-
+    if (mcs_io_write(fd, buf, buf_len) == -1) {
+        mcs_io_reset(fd);
+        moxi_log_write("SRIRAM DEBUG 2: auth failure during write for %s (%d)\n",
+                       (char *) buf, buf_len);
         return -1;
     }
 
@@ -2962,8 +2974,8 @@ int cproxy_auth_downstream(mcs_server_st *server,
 
             mr = mcs_io_read(fd, buf, amt, timeout);
             if (mr != MCS_SUCCESS) {
-                if (settings.verbose > 1) {
-                    moxi_log_write("auth could not read response body (%d) %d\n",
+                if (1) {
+                    moxi_log_write("SRIRAM DEBUG: auth could not read response body (%d) %d\n",
                                    usr, amt, mr);
                 }
 
@@ -2983,20 +2995,20 @@ int cproxy_auth_downstream(mcs_server_st *server,
         /* - UNKNOWN_COMMAND - sasl-unaware server. */
 
         if (res.response.status == PROTOCOL_BINARY_RESPONSE_SUCCESS) {
-            if (settings.verbose > 2) {
-                moxi_log_write("auth_downstream success for %s\n", usr);
+            if (1) {
+                moxi_log_write("SRIRAM DEBUG: auth_downstream success for %s\n", usr);
             }
 
             return 0;
         }
 
-        if (settings.verbose > 1) {
-            moxi_log_write("auth_downstream failure for %s (%x)\n",
+        if (1) {
+            moxi_log_write("SRIRAM DEBUG: auth_downstream failure for %s (%x)\n",
                            usr, res.response.status);
         }
     } else {
-        if (settings.verbose > 1) {
-            moxi_log_write("auth_downstream response error for %s, %d\n",
+        if (1) {
+            moxi_log_write("SRIRAM DEBUG: auth_downstream response error for %s, %d\n",
                            usr, mr);
         }
     }
@@ -3047,8 +3059,8 @@ int cproxy_bucket_downstream(mcs_server_st *server,
         mcs_io_write(fd, behavior->bucket, bucket_len) == -1) {
         mcs_io_reset(fd);
 
-        if (settings.verbose > 1) {
-            moxi_log_write("bucket failure during write (%d)\n",
+        if (1) {
+            moxi_log_write("SRIRAM DEBUG: bucket failure during write (%d)\n",
                     bucket_len);
         }
 
@@ -3080,6 +3092,7 @@ int cproxy_bucket_downstream(mcs_server_st *server,
                 if (mr == MCS_TIMEOUT) {
                     return 1;
                 }
+                moxi_log_write("SRIRAM DEBUG: mcs_io_read failure in cproxy_bucket_downstream\n");
 
                 return -1;
             }
@@ -3093,16 +3106,16 @@ int cproxy_bucket_downstream(mcs_server_st *server,
         /* - UNKNOWN_COMMAND - bucket-unaware server. */
 
         if (res.response.status == PROTOCOL_BINARY_RESPONSE_SUCCESS) {
-            if (settings.verbose > 2) {
-                moxi_log_write("bucket_downstream success, %s\n",
-                        behavior->bucket);
+            if (1) {
+                moxi_log_write("SRIRAM DEBUG: bucket_downstream success, %s\n",
+                               behavior->bucket);
             }
 
             return 0;
         }
 
-        if (settings.verbose > 1) {
-            moxi_log_write("bucket_downstream failure, %s (%x)\n",
+        if (1) {
+            moxi_log_write("SRIRAM DEBUG: bucket_downstream failure, %s (%x)\n",
                     behavior->bucket,
                     res.response.status);
         }
@@ -3434,8 +3447,8 @@ conn *zstored_acquire_downstream_conn(downstream *d,
             rel_time_t msecs_since_error =
                 (rel_time_t)(msec_current_time - conns->error_time);
 
-            if (settings.verbose > 2) {
-                moxi_log_write("zacquire_dc, %s, %d, %"PRIu64", (%d)\n",
+            if (1) {
+                moxi_log_write("SRIRAM DEBUG: zacquire_dc, %s, %d, %"PRIu64", (%d)\n",
                                host_ident,
                                conns->error_count,
                                (uint64_t)conns->error_time,
@@ -3445,7 +3458,8 @@ conn *zstored_acquire_downstream_conn(downstream *d,
             if ((behavior->cycle > 0) &&
                 (behavior->connect_retry_interval > msecs_since_error)) {
                 d->ptd->stats.stats.tot_downstream_connect_interval++;
-
+                moxi_log_write("SRIRAM DEBUG: zstored_acquire_downstream_conn:"
+                               "connect retry interval > 0\n");
                 return NULL;
             }
         }
@@ -3453,12 +3467,16 @@ conn *zstored_acquire_downstream_conn(downstream *d,
         if (behavior->downstream_conn_max > 0 &&
             behavior->downstream_conn_max <= conns->dc_acquired) {
             d->ptd->stats.stats.tot_downstream_connect_max_reached++;
-
+            moxi_log_write("SRIRAM DEBUG: zstored_acquire_downstream_conn:"
+                           "conn max reached\n");
             *downstream_conn_max_reached = true;
 
             return NULL;
         }
     }
+
+    moxi_log_write("SRIRAM DEBUG: zstored_acquire_downstream_conn:"
+                   "before cproxy_connect_downstream_conn\n");
 
     dc = cproxy_connect_downstream_conn(d, thread, msst, behavior);
     if (dc != NULL) {
@@ -3473,6 +3491,8 @@ conn *zstored_acquire_downstream_conn(downstream *d,
             }
         }
     } else {
+         moxi_log_write("SRIRAM DEBUG: zstored_acquire_downstream_conn:"
+                        "dc is NULL\n");
         if (conns != NULL) {
             conns->error_count++;
             conns->error_time = msec_current_time;
@@ -3653,6 +3673,9 @@ bool zstored_downstream_waiting_add(downstream *d, LIBEVENT_THREAD *thread,
 
         return true;
     }
+
+    moxi_log_write("SRIRAM DEBUG: zstored_downstream_waiting_add:"
+                   "returning false as conns is NULL\n");
 
     return false;
 }
